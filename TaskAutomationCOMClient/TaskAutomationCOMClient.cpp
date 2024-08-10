@@ -10,7 +10,7 @@ int main()
 {
     HRESULT hr = CoInitialize(nullptr);
     if (FAILED(hr)) {
-        std::cout << "Failed to initialize COM library. Error code: " << hr << std::endl;
+        std::cout << "Failed to initialize COM library. Error code: " << hr << '\n';
         return 1;
     }
 
@@ -19,8 +19,8 @@ int main()
 
     if (FAILED(hr)) {
         _com_error err(hr);
-        std::wcout << L"Failed to create instance. Error message: " << err.ErrorMessage() << std::endl;
-        std::cout << "HRESULT: " << std::hex << hr << std::dec << std::endl;
+        std::wcout << L"Failed to create instance. Error message: " << err.ErrorMessage() << '\n';
+        std::cout << "HRESULT: " << std::hex << hr << std::dec << '\n';
         CoUninitialize();
         return 1;
     }
@@ -34,16 +34,16 @@ int main()
             &result);
         if (SUCCEEDED(hr))
         {
-            std::wcout << "Result: " << result << std::endl;
+            std::wcout << "Result: " << result << '\n';
         }
         else
         {
-            std::cout << "Method call failed" << std::endl;
+            std::cout << "Method call failed" << '\n';
         }
     }
     else
     {
-        std::cout << "Failed to create instance" << std::endl;
+        std::cout << "Failed to create instance" << '\n';
     }
 
     CoUninitialize();
