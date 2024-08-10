@@ -1,0 +1,62 @@
+// TaskAutomationCOMServer.idl : IDL source for TaskAutomationCOMServer
+//
+// This file will be processed by the MIDL tool to
+// produce the type library (TaskAutomationCOMServer.tlb) and marshalling code.
+
+import "oaidl.idl";
+import "ocidl.idl";
+
+[
+    object,
+        uuid(53E59C22-A834-48E0-B308-6653F6E2AC6A),
+        dual,
+        nonextensible,
+        pointer_default(unique)
+]
+interface IComponentRegistrar : IDispatch
+{
+    [id(1)] HRESULT Attach([in] BSTR bstrPath);
+    [id(2)] HRESULT RegisterAll();
+    [id(3)] HRESULT UnregisterAll();
+    [id(4)] HRESULT GetComponents([out] SAFEARRAY(BSTR)* pbstrCLSIDs, [out] SAFEARRAY(BSTR)* pbstrDescriptions);
+    [id(5)] HRESULT RegisterComponent([in] BSTR bstrCLSID);
+    [id(6)] HRESULT UnregisterComponent([in] BSTR bstrCLSID);
+};
+
+[
+    object,
+        uuid(D7F45FAF-BD0C-442F-B013-A2EAD8234DD3), 
+        dual,
+        nonextensible,
+        pointer_default(unique)
+]
+interface IFileManagement : IDispatch
+{
+    [id(1)] HRESULT BatchRenameFiles([in] BSTR directoryPath, [in] BSTR replaceChar, [in] VARIANT_BOOL includeSubdirectories, [in] BSTR fileTypeFilter, [out, retval] BSTR* result);
+    [id(2)] HRESULT OrganizeDirectory([in] BSTR directoryPath, [in] BSTR criteria, [out, retval] BSTR* result);
+};
+
+[
+    uuid(48f8d34d-0ea5-46c7-98ab-ddc985161f4f),
+        version(1.0),
+        custom(a817e7a1-43fa-11d0-9e44-00aa00b6770a, "{bb4a744d-28af-48df-96e9-1a692b847997}")
+]
+library TaskAutomationCOMServerLib
+{
+    importlib("stdole2.tlb");
+    [
+        uuid(bb4a744d-28af-48df-96e9-1a692b847997)
+    ]
+        coclass CompReg
+    {
+        [default] interface IComponentRegistrar;
+    };
+
+    [
+        uuid(78B246B0-C4C7-497F-85C5-A6F77195AB23) 
+    ]
+        coclass FileManagement
+    {
+        [default] interface IFileManagement;
+    };
+};
