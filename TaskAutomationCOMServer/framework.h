@@ -7,17 +7,19 @@
 #include "targetver.h"
 
 #define _ATL_APARTMENT_THREADED
-
-#define _ATL_NO_AUTOMATIC_NAMESPACE
-
 #define _ATL_CSTRING_EXPLICIT_CONSTRUCTORS	// some CString constructors will be explicit
-
-
-#include <comsvcs.h>
-
 #define ATL_NO_ASSERT_ON_DESTROY_NONEXISTENT_WINDOW
 
-#include "resource.h"
+// Include ATL headers first
 #include <atlbase.h>
 #include <atlcom.h>
 #include <atlctl.h>
+
+// Then other COM headers
+#include "resource.h"
+
+using namespace ATL;
+
+// COM class headers (required for OBJECT_ENTRY_AUTO registration)
+#include "FileManagement.h"
+#include "ShellExtHandler.h"

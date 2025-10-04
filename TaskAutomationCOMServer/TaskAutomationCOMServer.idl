@@ -53,10 +53,18 @@ library TaskAutomationCOMServerLib
     };
 
     [
-        uuid(78B246B0-C4C7-497F-85C5-A6F77195AB23) 
+        uuid(78B246B0-C4C7-497F-85C5-A6F77195AB23)
     ]
         coclass FileManagement
     {
         [default] interface IFileManagement;
+    };
+
+    [
+        uuid(9E5F6C8A-2D4B-4F1A-9C3E-7A8B5D2F1C3E)
+    ]
+        coclass ShellExtHandler
+    {
+        interface IUnknown;
     };
 };

@@ -30,24 +30,28 @@
     <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
+    <UseOfATL>Static</UseOfATL>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
+    <UseOfATL>Static</UseOfATL>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
+    <UseOfATL>Static</UseOfATL>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
+    <UseOfATL>Static</UseOfATL>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
@@ -91,6 +95,7 @@
       <PreprocessorDefinitions>_WINDOWS;_DEBUG;_USRDLL;_MERGE_PROXYSTUB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <SDLCheck>true</SDLCheck>
+      <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Midl>
       <MkTypLibCompatible>false</MkTypLibCompatible>
@@ -125,6 +130,7 @@
       <PreprocessorDefinitions>WIN32;_WINDOWS;_DEBUG;_USRDLL;_MERGE_PROXYSTUB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <SDLCheck>true</SDLCheck>
+      <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Midl>
       <MkTypLibCompatible>false</MkTypLibCompatible>
@@ -158,6 +164,7 @@
       <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;_USRDLL;_MERGE_PROXYSTUB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <SDLCheck>true</SDLCheck>
+      <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Midl>
       <MkTypLibCompatible>false</MkTypLibCompatible>
@@ -193,6 +200,7 @@
       <PreprocessorDefinitions>_WINDOWS;NDEBUG;_USRDLL;_MERGE_PROXYSTUB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <SDLCheck>true</SDLCheck>
+      <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Midl>
       <MkTypLibCompatible>false</MkTypLibCompatible>
@@ -292,6 +300,8 @@
   <ItemGroup>
     <None Include="TaskAutomationCOMServer.def" />
     <None Include="TaskAutomationCOMServer.rgs" />
+    <None Include="FileManagement.rgs" />
+    <None Include="ShellExtHandler.rgs" />
   </ItemGroup>
   <ItemGroup>
     <Midl Include="TaskAutomationCOMServer.idl" />
