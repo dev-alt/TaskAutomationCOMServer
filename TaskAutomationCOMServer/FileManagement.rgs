@@ -1,0 +1,29 @@
+HKCR
+{
+	NoRemove CLSID
+	{
+		ForceRemove {78B246B0-C4C7-497F-85C5-A6F77195AB23} = s 'FileManagement Class'
+		{
+			ProgID = s 'TaskAutomation.FileManagement.1'
+			VersionIndependentProgID = s 'TaskAutomation.FileManagement'
+			InprocServer32 = s '%MODULE%'
+			{
+				val ThreadingModel = s 'Apartment'
+			}
+			TypeLib = s '{48f8d34d-0ea5-46c7-98ab-ddc985161f4f}'
+			Version = s '1.0'
+		}
+	}
+}
+HKCR
+{
+	NoRemove TaskAutomation.FileManagement.1 = s 'FileManagement Class'
+	{
+		CLSID = s '{78B246B0-C4C7-497F-85C5-A6F77195AB23}'
+	}
+	NoRemove TaskAutomation.FileManagement = s 'FileManagement Class'
+	{
+		CLSID = s '{78B246B0-C4C7-497F-85C5-A6F77195AB23}'
+		CurVer = s 'TaskAutomation.FileManagement.1'
+	}
+}

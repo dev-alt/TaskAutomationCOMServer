@@ -1,0 +1,46 @@
+HKCR
+{
+	NoRemove CLSID
+	{
+		ForceRemove {9E5F6C8A-2D4B-4F1A-9C3E-7A8B5D2F1C3E} = s 'Task Automation Shell Extension'
+		{
+			InprocServer32 = s '%MODULE%'
+			{
+				val ThreadingModel = s 'Apartment'
+			}
+		}
+	}
+}
+HKCR
+{
+	NoRemove Directory
+	{
+		NoRemove shellex
+		{
+			NoRemove ContextMenuHandlers
+			{
+				ForceRemove TaskAutomationShellExt = s '{9E5F6C8A-2D4B-4F1A-9C3E-7A8B5D2F1C3E}'
+			}
+		}
+	}
+	NoRemove Folder
+	{
+		NoRemove shellex
+		{
+			NoRemove ContextMenuHandlers
+			{
+				ForceRemove TaskAutomationShellExt = s '{9E5F6C8A-2D4B-4F1A-9C3E-7A8B5D2F1C3E}'
+			}
+		}
+	}
+	NoRemove *
+	{
+		NoRemove shellex
+		{
+			NoRemove ContextMenuHandlers
+			{
+				ForceRemove TaskAutomationShellExt = s '{9E5F6C8A-2D4B-4F1A-9C3E-7A8B5D2F1C3E}'
+			}
+		}
+	}
+}
