@@ -1,11 +1,45 @@
+//=============================================================================
+// ShellExtHandler.cpp
+//=============================================================================
+//
+// PURPOSE:
+//   Implementation of the Windows Shell Extension context menu handler.
+//   Integrates file management operations into Windows Explorer's right-click menu.
+//
+// KEY CONCEPTS:
+//   - CF_HDROP: Clipboard format containing a list of file paths (HDROP handle)
+//   - PIDL: Pointer to Item IDentifier List (internal Explorer representation)
+//   - DragQueryFile: Win32 API to extract file paths from HDROP data
+//   - IDataObject: COM interface for transferring data (used by drag-drop and clipboard)
+//
+// DEPENDENCIES:
+//   - shlwapi.lib: Shell lightweight utility functions (PathIsDirectory, etc.)
+//   - Logger: Custom logging utility for debugging shell extension behavior
+//
+//=============================================================================
+
 #include "pch.h"
 #include "ShellExtHandler.h"
 #include "Logger.h"
-#include <shlwapi.h>
-#include <strsafe.h>
+#include <shlwapi.h>    // PathIsDirectory, PathRemoveFileSpec
+#include <strsafe.h>    // Safe string functions (StringCchCopy, etc.)
 
 #pragma comment(lib, "shlwapi.lib")
 
+//=============================================================================
+// CShellExtHandler::Initialize
+//=============================================================================
+// Called by Windows Explorer when user right-clicks on files/folders.
+// Extracts the selected file/folder paths from the data object and stores
+// them for later use when building the context menu.
+//
+// DATA TRANSFER:
+//   1. Explorer provides an IDataObject containing the selection
+//   2. We request data in CF_HDROP format (list of file paths)
+//   3. Extract paths using DragQueryFile Win32 API
+//   4. Store paths in member variables for QueryContextMenu/InvokeCommand
+//
+//=============================================================================
 STDMETHODIMP CShellExtHandler::Initialize(LPCITEMIDLIST pidlFolder, IDataObject* pDataObj, HKEY hkeyProgID)
 {
     Logger::Info("ShellExtHandler::Initialize called");
@@ -78,24 +112,52 @@ STDMETHODIMP CShellExtHandler::QueryContextMenu(HMENU hmenu, UINT indexMenu, UIN
     UINT idCmd = idCmdFirst;
 
     // Create a submenu for our commands
+    // This groups all our operations under a single "Task Automation" item
     HMENU hSubmenu = CreatePopupMenu();
     if (!hSubmenu)
     {
         return HRESULT_FROM_WIN32(GetLastError());
     }
 
+    //-------------------------------------------------------------------------
     // Add menu items to the submenu
-    InsertMenu(hSubmenu, 0, MF_BYPOSITION | MF_STRING, idCmd + IDM_BATCH_RENAME, L"Batch Rename Files");
-    InsertMenu(hSubmenu, 1, MF_BYPOSITION | MF_STRING, idCmd + IDM_ORGANIZE_DIR, L"Organize Directory");
+    //-------------------------------------------------------------------------
+    // MF_BYPOSITION: Insert at specified position (not by command ID)
+    // MF_STRING: Menu item displays text
+    // MF_SEPARATOR: Adds a dividing line between menu groups
+    //-------------------------------------------------------------------------
+    UINT menuPos = 0;
+
+    // Group 1: File Renaming Operations
+    InsertMenu(hSubmenu, menuPos++, MF_BYPOSITION | MF_STRING, idCmd + IDM_BATCH_RENAME, L"Replace Spaces in Names");
+    InsertMenu(hSubmenu, menuPos++, MF_BYPOSITION | MF_STRING, idCmd + IDM_CONVERT_TO_LOWERCASE, L"Convert Names to lowercase");
+    InsertMenu(hSubmenu, menuPos++, MF_BYPOSITION | MF_STRING, idCmd + IDM_CONVERT_TO_UPPERCASE, L"Convert Names to UPPERCASE");
+    InsertMenu(hSubmenu, menuPos++, MF_BYPOSITION | MF_STRING, idCmd + IDM_REMOVE_SPECIAL_CHARS, L"Remove Special Characters");
+
+    // Separator between groups
+    InsertMenu(hSubmenu, menuPos++, MF_BYPOSITION | MF_SEPARATOR, 0, nullptr);
+
+    // Group 2: File Organization Operations
+    InsertMenu(hSubmenu, menuPos++, MF_BYPOSITION | MF_STRING, idCmd + IDM_ORGANIZE_DIR, L"Organize by Type/Date/Size...");
+    InsertMenu(hSubmenu, menuPos++, MF_BYPOSITION | MF_STRING, idCmd + IDM_DELETE_EMPTY_FOLDERS, L"Delete Empty Folders");
+
+    // Separator between groups
+    InsertMenu(hSubmenu, menuPos++, MF_BYPOSITION | MF_SEPARATOR, 0, nullptr);
+
+    // Group 3: Analysis Operations
+    InsertMenu(hSubmenu, menuPos++, MF_BYPOSITION | MF_STRING, idCmd + IDM_FIND_DUPLICATES, L"Find Duplicate Files");
+    InsertMenu(hSubmenu, menuPos++, MF_BYPOSITION | MF_STRING, idCmd + IDM_FILE_SIZE_REPORT, L"File Size Report");
 
     // Add the submenu to the context menu
+    // reinterpret_cast<UINT_PTR>: Convert HMENU handle to integer for InsertMenu
     InsertMenu(hmenu, indexMenu, MF_BYPOSITION | MF_POPUP | MF_STRING,
                reinterpret_cast<UINT_PTR>(hSubmenu), L"Task Automation");
 
-    Logger::Info("ShellExtHandler::QueryContextMenu - Added menu items");
+    Logger::Info("ShellExtHandler::QueryContextMenu - Added " + std::to_string(TOTAL_MENU_ITEMS) + " menu items");
 
-    // Return number of menu items added
-    return MAKE_HRESULT(SEVERITY_SUCCESS, FACILITY_NULL, 2);
+    // Return number of menu items added (not including separators)
+    // MAKE_HRESULT encodes the count in the lower word of the result
+    return MAKE_HRESULT(SEVERITY_SUCCESS, FACILITY_NULL, TOTAL_MENU_ITEMS);
 }
 
 STDMETHODIMP CShellExtHandler::InvokeCommand(LPCMINVOKECOMMANDINFO pici)
@@ -109,9 +171,10 @@ STDMETHODIMP CShellExtHandler::InvokeCommand(LPCMINVOKECOMMANDINFO pici)
         return E_INVALIDARG;
     }
 
-    // Get the command index
+    // Get the command index (relative to idCmdFirst from QueryContextMenu)
     UINT idCmd = LOWORD(pici->lpVerb);
 
+    // Dispatch to the appropriate handler based on command ID
     switch (idCmd)
     {
     case IDM_BATCH_RENAME:
@@ -124,6 +187,36 @@ STDMETHODIMP CShellExtHandler::InvokeCommand(LPCMINVOKECOMMANDINFO pici)
         ExecuteOrganizeDirectory();
         break;
 
+    case IDM_DELETE_EMPTY_FOLDERS:
+        Logger::Info("ShellExtHandler::InvokeCommand - Executing Delete Empty Folders");
+        ExecuteDeleteEmptyFolders();
+        break;
+
+    case IDM_FIND_DUPLICATES:
+        Logger::Info("ShellExtHandler::InvokeCommand - Executing Find Duplicates");
+        ExecuteFindDuplicates();
+        break;
+
+    case IDM_CONVERT_TO_LOWERCASE:
+        Logger::Info("ShellExtHandler::InvokeCommand - Executing Convert to Lowercase");
+        ExecuteConvertToLowercase();
+        break;
+
+    case IDM_CONVERT_TO_UPPERCASE:
+        Logger::Info("ShellExtHandler::InvokeCommand - Executing Convert to Uppercase");
+        ExecuteConvertToUppercase();
+        break;
+
+    case IDM_REMOVE_SPECIAL_CHARS:
+        Logger::Info("ShellExtHandler::InvokeCommand - Executing Remove Special Characters");
+        ExecuteRemoveSpecialChars();
+        break;
+
+    case IDM_FILE_SIZE_REPORT:
+        Logger::Info("ShellExtHandler::InvokeCommand - Executing File Size Report");
+        ExecuteFileSizeReport();
+        break;
+
     default:
         Logger::Warning("ShellExtHandler::InvokeCommand - Unknown command: " + std::to_string(idCmd));
         return E_INVALIDARG;
@@ -134,32 +227,88 @@ STDMETHODIMP CShellExtHandler::InvokeCommand(LPCMINVOKECOMMANDINFO pici)
 
 STDMETHODIMP CShellExtHandler::GetCommandString(UINT_PTR idCmd, UINT uType, UINT* pReserved, CHAR* pszName, UINT cchMax)
 {
-    // Provide help text for menu items
+    // Provide help text for menu items (shown in Explorer status bar on hover)
     if (uType == GCS_HELPTEXTA)
     {
+        // ANSI version (for older systems)
         switch (idCmd)
         {
         case IDM_BATCH_RENAME:
-            StringCchCopyA(pszName, cchMax, "Batch rename files in the selected directory");
+            StringCchCopyA(pszName, cchMax, "Replace spaces with underscores in filenames");
             return S_OK;
 
         case IDM_ORGANIZE_DIR:
-            StringCchCopyA(pszName, cchMax, "Organize files in the directory by type, date, or size");
+            StringCchCopyA(pszName, cchMax, "Organize files into folders by extension, date, or size");
+            return S_OK;
+
+        case IDM_DELETE_EMPTY_FOLDERS:
+            StringCchCopyA(pszName, cchMax, "Remove all empty subdirectories");
+            return S_OK;
+
+        case IDM_FIND_DUPLICATES:
+            StringCchCopyA(pszName, cchMax, "Find duplicate files based on content");
+            return S_OK;
+
+        case IDM_CONVERT_TO_LOWERCASE:
+            StringCchCopyA(pszName, cchMax, "Convert all filenames to lowercase");
+            return S_OK;
+
+        case IDM_CONVERT_TO_UPPERCASE:
+            StringCchCopyA(pszName, cchMax, "Convert all filenames to UPPERCASE");
+            return S_OK;
+
+        case IDM_REMOVE_SPECIAL_CHARS:
+            StringCchCopyA(pszName, cchMax, "Remove special characters from filenames");
+            return S_OK;
+
+        case IDM_FILE_SIZE_REPORT:
+            StringCchCopyA(pszName, cchMax, "Show total size and file count breakdown");
             return S_OK;
         }
     }
     else if (uType == GCS_HELPTEXTW)
     {
+        // Unicode version (standard for modern Windows)
         switch (idCmd)
         {
         case IDM_BATCH_RENAME:
             StringCchCopyW(reinterpret_cast<wchar_t*>(pszName), cchMax,
-                          L"Batch rename files in the selected directory");
+                          L"Replace spaces with underscores in filenames");
             return S_OK;
 
         case IDM_ORGANIZE_DIR:
             StringCchCopyW(reinterpret_cast<wchar_t*>(pszName), cchMax,
-                          L"Organize files in the directory by type, date, or size");
+                          L"Organize files into folders by extension, date, or size");
+            return S_OK;
+
+        case IDM_DELETE_EMPTY_FOLDERS:
+            StringCchCopyW(reinterpret_cast<wchar_t*>(pszName), cchMax,
+                          L"Remove all empty subdirectories");
+            return S_OK;
+
+        case IDM_FIND_DUPLICATES:
+            StringCchCopyW(reinterpret_cast<wchar_t*>(pszName), cchMax,
+                          L"Find duplicate files based on content");
+            return S_OK;
+
+        case IDM_CONVERT_TO_LOWERCASE:
+            StringCchCopyW(reinterpret_cast<wchar_t*>(pszName), cchMax,
+                          L"Convert all filenames to lowercase");
+            return S_OK;
+
+        case IDM_CONVERT_TO_UPPERCASE:
+            StringCchCopyW(reinterpret_cast<wchar_t*>(pszName), cchMax,
+                          L"Convert all filenames to UPPERCASE");
+            return S_OK;
+
+        case IDM_REMOVE_SPECIAL_CHARS:
+            StringCchCopyW(reinterpret_cast<wchar_t*>(pszName), cchMax,
+                          L"Remove special characters from filenames");
+            return S_OK;
+
+        case IDM_FILE_SIZE_REPORT:
+            StringCchCopyW(reinterpret_cast<wchar_t*>(pszName), cchMax,
+                          L"Show total size and file count breakdown");
             return S_OK;
         }
     }
@@ -289,4 +438,175 @@ void CShellExtHandler::ExecuteOrganizeDirectory()
             Logger::Error("Failed to create FileManagement COM object");
         }
     }
+}
+//=============================================================================
+// ExecuteDeleteEmptyFolders
+//=============================================================================
+// Recursively scans the selected directory and deletes all empty subdirectories.
+//=============================================================================
+void CShellExtHandler::ExecuteDeleteEmptyFolders()
+{
+    if (!GetSelectedDirectory())
+    {
+        MessageBox(nullptr, L"No directory selected", L"Task Automation", MB_OK | MB_ICONERROR);
+        return;
+    }
+
+    int result = MessageBox(nullptr,
+                           L"This will delete all empty subdirectories recursively.\n\n"
+                           L"Continue?",
+                           L"Delete Empty Folders",
+                           MB_YESNO | MB_ICONWARNING);
+
+    if (result == IDYES)
+    {
+        MessageBox(nullptr,
+                   L"This feature is not yet implemented.\n\n"
+                   L"It will recursively delete all empty folders.",
+                   L"Coming Soon",
+                   MB_OK | MB_ICONINFORMATION);
+        Logger::Info("DeleteEmptyFolders - Not yet implemented");
+    }
+}
+
+//=============================================================================
+// ExecuteFindDuplicates
+//=============================================================================
+// Finds duplicate files based on size and optionally content hash.
+//=============================================================================
+void CShellExtHandler::ExecuteFindDuplicates()
+{
+    if (!GetSelectedDirectory())
+    {
+        MessageBox(nullptr, L"No directory selected", L"Task Automation", MB_OK | MB_ICONERROR);
+        return;
+    }
+
+    MessageBox(nullptr,
+               L"This feature is not yet implemented.\n\n"
+               L"It will find duplicate files by comparing:\n"
+               L"1. File size\n"
+               L"2. File content (hash)",
+               L"Coming Soon",
+               MB_OK | MB_ICONINFORMATION);
+    Logger::Info("FindDuplicates - Not yet implemented");
+}
+
+//=============================================================================
+// ExecuteConvertToLowercase
+//=============================================================================
+// Converts all filenames in the directory to lowercase.
+//=============================================================================
+void CShellExtHandler::ExecuteConvertToLowercase()
+{
+    if (!GetSelectedDirectory())
+    {
+        MessageBox(nullptr, L"No directory selected", L"Task Automation", MB_OK | MB_ICONERROR);
+        return;
+    }
+
+    int result = MessageBox(nullptr,
+                           L"This will convert all filenames to lowercase.\n\n"
+                           L"Example: MyFile.TXT → myfile.txt\n\n"
+                           L"Continue?",
+                           L"Convert to Lowercase",
+                           MB_YESNO | MB_ICONQUESTION);
+
+    if (result == IDYES)
+    {
+        MessageBox(nullptr,
+                   L"This feature is not yet implemented.\n\n"
+                   L"It will rename all files to lowercase.",
+                   L"Coming Soon",
+                   MB_OK | MB_ICONINFORMATION);
+        Logger::Info("ConvertToLowercase - Not yet implemented");
+    }
+}
+
+//=============================================================================
+// ExecuteConvertToUppercase
+//=============================================================================
+// Converts all filenames in the directory to UPPERCASE.
+//=============================================================================
+void CShellExtHandler::ExecuteConvertToUppercase()
+{
+    if (!GetSelectedDirectory())
+    {
+        MessageBox(nullptr, L"No directory selected", L"Task Automation", MB_OK | MB_ICONERROR);
+        return;
+    }
+
+    int result = MessageBox(nullptr,
+                           L"This will convert all filenames to UPPERCASE.\n\n"
+                           L"Example: myfile.txt → MYFILE.TXT\n\n"
+                           L"Continue?",
+                           L"Convert to UPPERCASE",
+                           MB_YESNO | MB_ICONQUESTION);
+
+    if (result == IDYES)
+    {
+        MessageBox(nullptr,
+                   L"This feature is not yet implemented.\n\n"
+                   L"It will rename all files to UPPERCASE.",
+                   L"Coming Soon",
+                   MB_OK | MB_ICONINFORMATION);
+        Logger::Info("ConvertToUppercase - Not yet implemented");
+    }
+}
+
+//=============================================================================
+// ExecuteRemoveSpecialChars
+//=============================================================================
+// Removes special characters from filenames, keeping only alphanumeric chars,
+// spaces, dots, underscores, and hyphens.
+//=============================================================================
+void CShellExtHandler::ExecuteRemoveSpecialChars()
+{
+    if (!GetSelectedDirectory())
+    {
+        MessageBox(nullptr, L"No directory selected", L"Task Automation", MB_OK | MB_ICONERROR);
+        return;
+    }
+
+    int result = MessageBox(nullptr,
+                           L"This will remove special characters from filenames.\n\n"
+                           L"Example: file@#name!.txt → filename.txt\n\n"
+                           L"Continue?",
+                           L"Remove Special Characters",
+                           MB_YESNO | MB_ICONQUESTION);
+
+    if (result == IDYES)
+    {
+        MessageBox(nullptr,
+                   L"This feature is not yet implemented.\n\n"
+                   L"It will remove special characters from filenames.",
+                   L"Coming Soon",
+                   MB_OK | MB_ICONINFORMATION);
+        Logger::Info("RemoveSpecialChars - Not yet implemented");
+    }
+}
+
+//=============================================================================
+// ExecuteFileSizeReport
+//=============================================================================
+// Generates a report showing total size, file count, and breakdown by extension.
+//=============================================================================
+void CShellExtHandler::ExecuteFileSizeReport()
+{
+    if (!GetSelectedDirectory())
+    {
+        MessageBox(nullptr, L"No directory selected", L"Task Automation", MB_OK | MB_ICONERROR);
+        return;
+    }
+
+    MessageBox(nullptr,
+               L"This feature is not yet implemented.\n\n"
+               L"It will show:\n"
+               L"• Total size\n"
+               L"• Total file count\n"
+               L"• Size breakdown by file type\n"
+               L"• Largest files",
+               L"Coming Soon",
+               MB_OK | MB_ICONINFORMATION);
+    Logger::Info("FileSizeReport - Not yet implemented");
 }

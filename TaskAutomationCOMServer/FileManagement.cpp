@@ -1,3 +1,19 @@
+//=============================================================================
+// FileManagement.cpp
+//=============================================================================
+//
+// PURPOSE:
+//   Implementation of the CFileManagement COM class.
+//   Provides file management automation operations exposed through COM interfaces.
+//
+// KEY CONCEPTS:
+//   - Uses C++17 std::filesystem for cross-platform file operations
+//   - BSTR (Basic String): COM's native string type (wide char, length-prefixed)
+//   - HRESULT: Standard COM return type (32-bit value indicating success/failure)
+//   - Exception safety: All C++ exceptions are caught and converted to HRESULTs
+//
+//=============================================================================
+
 #include "pch.h"
 #include "FileManagement.h"
 #include "StringUtils.h"
@@ -10,32 +26,67 @@
 #include <sstream>
 #include <atlstr.h>
 
+// Namespace alias for convenience - std::filesystem paths can be verbose
 namespace fs = std::filesystem;
 
+//=============================================================================
+// CFileManagement::BatchRenameFiles
+//=============================================================================
+// Batch renames files in a directory by replacing spaces with a specified character.
+//
+// ALGORITHM:
+//   1. Validate all input parameters (directory exists, regex is valid, etc.)
+//   2. Convert COM BSTR strings to C++ std::string for easier manipulation
+//   3. Iterate through directory (recursive or non-recursive based on flag)
+//   4. For each file matching the regex pattern:
+//      a. Replace all spaces with the specified replacement character
+//      b. Attempt to rename the file using std::filesystem::rename
+//      c. Log success/failure and collect statistics
+//   5. Build a detailed result message with statistics and any error details
+//   6. Return S_OK (operation completed) or error HRESULT
+//
+// ERROR HANDLING:
+//   - Parameter validation errors return E_INVALIDARG
+//   - Null pointer for result returns E_POINTER
+//   - Individual file rename failures are logged but don't stop the operation
+//   - Filesystem exceptions are caught and returned as E_FAIL
+//
+// MEMORY MANAGEMENT:
+//   - The returned BSTR must be freed by the caller using SysFreeString()
+//   - ATL's CComBSTR is used internally for automatic BSTR management
+//
+//=============================================================================
 STDMETHODIMP CFileManagement::BatchRenameFiles(BSTR directoryPath, BSTR replaceChar, VARIANT_BOOL includeSubdirectories, BSTR fileTypeFilter, BSTR* result)
 {
-    std::vector<std::string> messages;
-    int filesProcessed = 0;
-    int filesRenamed = 0;
-    int errors = 0;
+    // Statistics tracking for operation summary
+    std::vector<std::string> messages;  // Collect error messages for detailed reporting
+    int filesProcessed = 0;              // Total files examined
+    int filesRenamed = 0;                // Successfully renamed files
+    int errors = 0;                      // Count of failures
 
     try
     {
-        // Validate result parameter
+        //---------------------------------------------------------------------
+        // STEP 1: Parameter Validation
+        //---------------------------------------------------------------------
+        // COM best practice: Always validate [out] parameters first
+        // If result is NULL, we can't return error information to the caller
         if (!result)
         {
             Logger::Error("BatchRenameFiles: result parameter is null");
-            return E_POINTER;
+            return E_POINTER;  // Standard COM error for NULL pointer
         }
 
+        // Initialize output parameter to NULL (COM best practice)
         *result = nullptr;
 
-        // Validate input parameters
+        // Validate required input parameters using helper function
+        // BSTR can be NULL or empty, so we need to check both cases
         if (StringUtils::IsNullOrEmpty(directoryPath))
         {
             *result = StringUtils::StringToBSTR("Error: Directory path cannot be empty");
             Logger::Error("BatchRenameFiles: Directory path is empty");
-            return E_INVALIDARG;
+            return E_INVALIDARG;  // Standard COM error for invalid argument
         }
 
         if (StringUtils::IsNullOrEmpty(replaceChar))
@@ -52,12 +103,18 @@ STDMETHODIMP CFileManagement::BatchRenameFiles(BSTR directoryPath, BSTR replaceC
             return E_INVALIDARG;
         }
 
-        // Convert parameters
+        //---------------------------------------------------------------------
+        // STEP 2: Convert COM types to C++ types
+        //---------------------------------------------------------------------
+        // BSTR is a Windows-specific string type (wide char, length-prefixed)
+        // Convert to std::string for easier manipulation with C++ standard library
         std::string dirPath = StringUtils::BSTRToString(directoryPath);
         std::string replace = StringUtils::BSTRToString(replaceChar);
         std::string filter = StringUtils::BSTRToString(fileTypeFilter);
 
-        // Validate directory
+        //---------------------------------------------------------------------
+        // STEP 3: Validate directory exists and is accessible
+        //---------------------------------------------------------------------
         std::string errorMsg;
         if (!FileUtils::ValidateDirectory(dirPath, errorMsg))
         {
@@ -66,7 +123,11 @@ STDMETHODIMP CFileManagement::BatchRenameFiles(BSTR directoryPath, BSTR replaceC
             return E_INVALIDARG;
         }
 
-        // Validate regex pattern
+        //---------------------------------------------------------------------
+        // STEP 4: Validate regex pattern
+        //---------------------------------------------------------------------
+        // If the regex is invalid, std::regex constructor throws an exception
+        // We validate it first to provide a better error message to the user
         if (!FileUtils::ValidateRegexPattern(filter, errorMsg))
         {
             *result = StringUtils::StringToBSTR("Error: " + errorMsg);
@@ -74,32 +135,47 @@ STDMETHODIMP CFileManagement::BatchRenameFiles(BSTR directoryPath, BSTR replaceC
             return E_INVALIDARG;
         }
 
+        // Compile the regex pattern for file matching
         std::regex fileRegex(filter);
+
+        // Extract the first character for replacement (default to underscore)
         char replaceCharValue = replace.empty() ? '_' : replace[0];
 
         Logger::Info("BatchRenameFiles: Starting operation on directory: " + dirPath);
 
-        // Use appropriate iterator based on includeSubdirectories flag
+        //---------------------------------------------------------------------
+        // STEP 5: Iterate through files and perform renaming
+        //---------------------------------------------------------------------
+        // Choose iterator type based on includeSubdirectories flag
+        // VARIANT_BOOL is a COM type: VARIANT_TRUE (-1) or VARIANT_FALSE (0)
         if (includeSubdirectories)
         {
-            // Recursive iteration
+            // ===== RECURSIVE ITERATION =====
+            // fs::recursive_directory_iterator traverses all subdirectories
+            // NOTE: The iterator may throw if it encounters permission issues
             for (const auto& entry : fs::recursive_directory_iterator(dirPath))
             {
+                // Skip directories - only process regular files
                 if (!fs::is_regular_file(entry.path()))
                     continue;
 
                 filesProcessed++;
                 std::string filename = entry.path().filename().string();
 
+                // Check if filename matches the regex filter (e.g., "*.txt")
                 if (std::regex_match(filename, fileRegex))
                 {
+                    // Create a copy of the filename and replace all spaces
                     std::string newFilename = filename;
                     std::replace(newFilename.begin(), newFilename.end(), ' ', replaceCharValue);
 
+                    // Only rename if the filename actually changed
                     if (newFilename != filename)
                     {
+                        // Build the new full path: same directory + new filename
                         fs::path newPath = entry.path().parent_path() / newFilename;
 
+                        // Attempt the rename operation (handles file locks, conflicts, etc.)
                         if (FileUtils::SafeRename(entry.path(), newPath, errorMsg))
                         {
                             filesRenamed++;
@@ -107,6 +183,7 @@ STDMETHODIMP CFileManagement::BatchRenameFiles(BSTR directoryPath, BSTR replaceC
                         }
                         else
                         {
+                            // Rename failed - log it but continue processing other files
                             errors++;
                             messages.push_back("Failed to rename '" + filename + "': " + errorMsg);
                             Logger::Warning("Failed to rename '" + filename + "': " + errorMsg);
@@ -117,24 +194,32 @@ STDMETHODIMP CFileManagement::BatchRenameFiles(BSTR directoryPath, BSTR replaceC
         }
         else
         {
-            // Non-recursive iteration
+            // ===== NON-RECURSIVE ITERATION =====
+            // fs::directory_iterator only processes files in the specified directory
+            // Does NOT descend into subdirectories
             for (const auto& entry : fs::directory_iterator(dirPath))
             {
+                // Skip directories - only process regular files
                 if (!fs::is_regular_file(entry.path()))
                     continue;
 
                 filesProcessed++;
                 std::string filename = entry.path().filename().string();
 
+                // Check if filename matches the regex filter
                 if (std::regex_match(filename, fileRegex))
                 {
+                    // Create a copy of the filename and replace all spaces
                     std::string newFilename = filename;
                     std::replace(newFilename.begin(), newFilename.end(), ' ', replaceCharValue);
 
+                    // Only rename if the filename actually changed
                     if (newFilename != filename)
                     {
+                        // Build the new full path: same directory + new filename
                         fs::path newPath = entry.path().parent_path() / newFilename;
 
+                        // Attempt the rename operation
                         if (FileUtils::SafeRename(entry.path(), newPath, errorMsg))
                         {
                             filesRenamed++;
@@ -142,6 +227,7 @@ STDMETHODIMP CFileManagement::BatchRenameFiles(BSTR directoryPath, BSTR replaceC
                         }
                         else
                         {
+                            // Rename failed - log it but continue processing other files
                             errors++;
                             messages.push_back("Failed to rename '" + filename + "': " + errorMsg);
                             Logger::Warning("Failed to rename '" + filename + "': " + errorMsg);
@@ -151,7 +237,9 @@ STDMETHODIMP CFileManagement::BatchRenameFiles(BSTR directoryPath, BSTR replaceC
             }
         }
 
-        // Build result message
+        //---------------------------------------------------------------------
+        // STEP 6: Build result message for caller
+        //---------------------------------------------------------------------
         std::vector<std::string> resultLines;
         resultLines.push_back("Batch Rename Operation Completed");
         resultLines.push_back("Files processed: " + std::to_string(filesProcessed));
@@ -191,16 +279,46 @@ STDMETHODIMP CFileManagement::BatchRenameFiles(BSTR directoryPath, BSTR replaceC
     }
 }
 
+//=============================================================================
+// CFileManagement::OrganizeDirectory
+//=============================================================================
+// Organizes files in a directory into subdirectories based on various criteria.
+//
+// SUPPORTED CRITERIA:
+//   - "extension" or "type": Group files by file extension (.txt, .jpg, etc.)
+//   - "date" or "modified": Group by modification date (creates YYYY-MM folders)
+//   - "size": Group by file size (small < 1MB, medium < 10MB, large >= 10MB)
+//   - Any other string: Creates a single folder with that name
+//
+// ALGORITHM:
+//   1. Validate input parameters (directory exists, criteria specified)
+//   2. Iterate through files in the directory (non-recursive)
+//   3. For each file:
+//      a. Determine target subfolder based on criteria
+//      b. Create the target subfolder if it doesn't exist
+//      c. Move the file into the subfolder
+//   4. Build result message with statistics and error details
+//   5. Return S_OK or error HRESULT
+//
+// NOTES:
+//   - This operation is NOT recursive - only processes the specified directory
+//   - Creates subdirectories automatically as needed
+//   - Individual file failures don't stop the overall operation
+//
+//=============================================================================
 STDMETHODIMP CFileManagement::OrganizeDirectory(BSTR directoryPath, BSTR criteria, BSTR* result)
 {
-    std::vector<std::string> messages;
-    int filesProcessed = 0;
-    int filesOrganized = 0;
-    int errors = 0;
+    // Statistics tracking
+    std::vector<std::string> messages;  // Error messages for detailed reporting
+    int filesProcessed = 0;              // Total files examined
+    int filesOrganized = 0;              // Successfully moved files
+    int errors = 0;                      // Count of failures
 
     try
     {
-        // Validate result parameter
+        //---------------------------------------------------------------------
+        // Parameter Validation (similar pattern to BatchRenameFiles)
+        //---------------------------------------------------------------------
         if (!result)
         {
             Logger::Error("OrganizeDirectory: result parameter is null");
